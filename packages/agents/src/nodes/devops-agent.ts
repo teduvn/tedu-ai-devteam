@@ -1,5 +1,6 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { env } from "../env.js";
+import { resolve } from "path";
+import { env, MONOREPO_ROOT } from "../env.js";
 import { createMCPTools, closeMCPClient } from "../tools/mcp-client.js";
 import { invokeWithTools, extractJson } from "../tools/invoke-with-tools.js";
 import { createLLM } from "../tools/llm-factory.js";
@@ -54,7 +55,7 @@ export async function devopsNode(
 ): Promise<Partial<AgentStateType>> {
   const { tools: ghTools, client: ghClient } = await createMCPTools({
     command: "npx",
-    args: ["tsx", "packages/mcp-servers/src/github-server.ts"],
+    args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/github-server.ts")],
     env: {
       GITHUB_TOKEN: env.GITHUB_TOKEN,
       GITHUB_OWNER: env.GITHUB_OWNER,
@@ -65,7 +66,7 @@ export async function devopsNode(
 
   const { tools: jiraTools, client: jiraClient } = await createMCPTools({
     command: "npx",
-    args: ["tsx", "packages/mcp-servers/src/jira-server.ts"],
+    args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/jira-server.ts")],
     env: {
       JIRA_BASE_URL: env.JIRA_BASE_URL,
       JIRA_EMAIL: env.JIRA_EMAIL,

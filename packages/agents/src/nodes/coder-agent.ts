@@ -1,5 +1,6 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { env } from "../env.js";
+import { resolve } from "path";
+import { MONOREPO_ROOT } from "../env.js";
 import { createMCPTools, closeMCPClient } from "../tools/mcp-client.js";
 import { invokeWithTools, extractJson } from "../tools/invoke-with-tools.js";
 import { createLLM } from "../tools/llm-factory.js";
@@ -32,7 +33,7 @@ export async function coderNode(
 ): Promise<Partial<AgentStateType>> {
   const { tools, client } = await createMCPTools({
     command: "npx",
-    args: ["tsx", "packages/mcp-servers/src/filesystem-server.ts"],
+    args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/filesystem-server.ts")],
   });
 
   try {

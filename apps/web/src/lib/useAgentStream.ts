@@ -66,7 +66,13 @@ interface AgentStreamState {
   logs: LogEntry[];
 }
 
-export function useAgentStream(ticketId: string | null) {
+interface UseAgentStreamOptions {
+  useMock?: boolean;
+}
+
+export function useAgentStream(ticketId: string | null, options?: UseAgentStreamOptions) {
+  const { useMock = true } = options || {};
+  
   const [state, setState] = useState<AgentStreamState>({
     phase: "idle",
     plan: [],
@@ -120,7 +126,11 @@ export function useAgentStream(ticketId: string | null) {
       logs: [],
     });
 
-    const es = new EventSource(`/api/agent?ticketId=${encodeURIComponent(ticketId)}`);
+    const endpoint = useMock 
+      ? `/api/agent/mock?ticketId=${encodeURIComponent(ticketId)}`
+      : `/api/agent?ticketId=${encodeURIComponent(ticketId)}`;
+    
+    const es = new EventSource(endpoint);
     esRef.current = es;
 
     es.onmessage = (event: MessageEvent<string>) => {
@@ -188,25 +198,55 @@ export function useAgentStream(ticketId: string | null) {
       es.close();
       esRef.current = null;
     };
-  }, [ticketId, addLog]);
+  }, [ticketId, addLog, useMock]);
 
   const resume = useCallback(
     async (approved: boolean) => {
       if (!state.threadId) return;
-      await fetch("/api/agent/resume", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ threadId: state.threadId, approved }),
-      });
-      setState((prev) => ({
-        ...prev,
-        interrupted: false,
-        phase: approved ? "done" : "coding",
-        isRunning: false,
-      }));
-      addLog("human_review", approved ? "Deploy to production approved ✅" : "Rejected — reworking ❌");
+      
+      // For mock mode, we simulate the resume action
+      if (useMock) {
+        setState((prev) => ({
+          ...prev,
+          interrupted: false,
+          phase: approved ? "deploying_production" : "coding",
+          isRunning: false,
+        }));
+        
+        addLog("human_review", approved 
+          ? "Deploy to production approved ✅" 
+          : "Rejected — reworking ❌");
+        
+        // Simulate deployment delay
+        if (approved) {
+          setTimeout(() => {
+            setState(prev => ({
+              ...prev,
+              phase: "done",
+            }));
+            addLog("deploying_production", "Deployed to production successfully 🚀");
+          }, 1500);
+        }
+      } else {
+        // Real API call
+        await fetch("/api/agent/resume", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ threadId: state.threadId, approved }),
+        });
+        
+        setState((prev) => ({
+          ...prev,
+          interrupted: false,
+          phase: approved ? "done" : "coding",
+          isRunning: false,
+        }));
+        addLog("human_review", approved 
+          ? "Deploy to production approved ✅" 
+          : "Rejected — reworking ❌");
+      }
     },
-    [state.threadId, addLog],
+    [state.threadId, addLog, useMock],
   );
 
   // Cleanup on unmount

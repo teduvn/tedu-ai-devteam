@@ -28,11 +28,9 @@ export async function invokeWithTools(
   const history = [...messages];
 
   while (response.tool_calls && response.tool_calls.length > 0) {
-    const aiMsg = new AIMessage({
-      content: response.content,
-      tool_calls: response.tool_calls,
-    });
-    history.push(aiMsg);
+    // Push the raw response — preserves additional_kwargs (e.g. reasoning_content
+    // from DeepSeek) so the API doesn't reject the history on the next turn.
+    history.push(response as AIMessage);
 
     for (const call of response.tool_calls) {
       const tool = tools.find((t) => t.name === call.name);

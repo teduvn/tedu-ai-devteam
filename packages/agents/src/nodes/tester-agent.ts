@@ -1,5 +1,6 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { env } from "../env.js";
+import { resolve } from "path";
+import { env, MONOREPO_ROOT } from "../env.js";
 import { createMCPTools, closeMCPClient } from "../tools/mcp-client.js";
 import { invokeWithTools, extractJson } from "../tools/invoke-with-tools.js";
 import { createLLM } from "../tools/llm-factory.js";
@@ -36,12 +37,12 @@ export async function testerNode(
 ): Promise<Partial<AgentStateType>> {
   const { tools: fsTools, client: fsClient } = await createMCPTools({
     command: "npx",
-    args: ["tsx", "packages/mcp-servers/src/filesystem-server.ts"],
+    args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/filesystem-server.ts")],
   });
 
   const { tools: jiraTools, client: jiraClient } = await createMCPTools({
     command: "npx",
-    args: ["tsx", "packages/mcp-servers/src/jira-server.ts"],
+    args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/jira-server.ts")],
     env: {
       JIRA_BASE_URL: env.JIRA_BASE_URL,
       JIRA_EMAIL: env.JIRA_EMAIL,

@@ -8,8 +8,50 @@ const DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1";
 
 const DEFAULT_MODELS: Record<string, string> = {
   anthropic: "claude-sonnet-4-5",
-  deepseek: "deepseek-reasoner", // DeepSeek R1 (reasoning model)
+  deepseek: "deepseek-chat", // DeepSeek V3 — supports tool calls natively
 };
+
+/**
+ * Custom fetch wrapper for the DeepSeek API.
+ *
+ * DeepSeek requires `reasoning_content` to be present in every assistant
+ * message in history when the model generates it (even for deepseek-chat V3
+ * which sometimes activates thinking mode). LangChain serialises AIMessage
+ * back to OpenAI API format but silently drops `additional_kwargs`, so the
+ * field is lost. This wrapper injects `reasoning_content: ""` into any
+ * assistant message that is missing it before the request leaves the process.
+ */
+function deepseekAwareFetch(
+  input: Parameters<typeof globalThis.fetch>[0],
+  init?: Parameters<typeof globalThis.fetch>[1],
+): ReturnType<typeof globalThis.fetch> {
+  if (init?.body && typeof init.body === "string") {
+    try {
+      const body = JSON.parse(init.body) as {
+        messages?: Array<Record<string, unknown>>;
+      };
+      if (Array.isArray(body.messages)) {
+        let patched = false;
+        body.messages = body.messages.map((msg) => {
+          if (msg.role === "assistant" && msg.reasoning_content === undefined) {
+            patched = true;
+            return { ...msg, reasoning_content: "" };
+          }
+          return msg;
+        });
+        if (patched) {
+          return globalThis.fetch(input, {
+            ...init,
+            body: JSON.stringify(body),
+          });
+        }
+      }
+    } catch {
+      // Non-JSON body — pass through unmodified.
+    }
+  }
+  return globalThis.fetch(input, init);
+}
 
 /**
  * Returns the configured LLM instance based on LLM_PROVIDER env var.
@@ -19,7 +61,7 @@ const DEFAULT_MODELS: Record<string, string> = {
  *
  * Control via .env:
  *   LLM_PROVIDER=deepseek
- *   LLM_MODEL=deepseek-reasoner      # or deepseek-chat for V3
+ *   LLM_MODEL=deepseek-chat        # V3 — recommended for tool use
  *   DEEPSEEK_API_KEY=sk-...
  */
 export function createLLM(): SupportedLLM {
@@ -37,6 +79,8 @@ export function createLLM(): SupportedLLM {
       apiKey: env.DEEPSEEK_API_KEY,
       configuration: {
         baseURL: DEEPSEEK_BASE_URL,
+        // Inject missing reasoning_content fields before every API call.
+        fetch: deepseekAwareFetch as typeof globalThis.fetch,
       },
     });
   }
@@ -52,3 +96,5 @@ export function createLLM(): SupportedLLM {
     apiKey: env.ANTHROPIC_API_KEY,
   });
 }
+
+

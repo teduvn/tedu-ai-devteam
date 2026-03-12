@@ -1,15 +1,22 @@
 import { z } from "zod";
 import { resolve } from "path";
-import { fileURLToPath } from "url";
 
-// Load .env from monorepo root regardless of working directory.
-// import.meta.url gives us the absolute location of this file, so the
-// relative path is always correct even when pnpm changes cwd per package.
-const __dirname = fileURLToPath(new URL(".", import.meta.url));
+// Unified monorepo root resolution:
+//   - Next.js/webpack: TEDU_MONOREPO_ROOT is injected by next.config.ts (env option).
+//   - agent:start (tsx): import.meta.dirname = packages/agents/src → up 3 = monorepo root.
+// import.meta.dirname is a plain property access — webpack does NOT intercept it.
+export const MONOREPO_ROOT: string =
+  process.env.TEDU_MONOREPO_ROOT ??
+  resolve(import.meta.dirname, "../../..");
+
+// Load .env when running via Node.js (tsx / agent:start).
+// Skipped in Next.js — next.config.ts already called process.loadEnvFile.
 try {
-  process.loadEnvFile(resolve(__dirname, "../../../.env"));
+  if (!process.env.TEDU_MONOREPO_ROOT) {
+    process.loadEnvFile(resolve(MONOREPO_ROOT, ".env"));
+  }
 } catch {
-  // No .env file found — assume env vars are provided by the host (CI/production).
+  // .env not found — assume env vars are injected by host.
 }
 
 const envSchema = z.object({
