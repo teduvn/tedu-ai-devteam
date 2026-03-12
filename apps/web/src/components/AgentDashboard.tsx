@@ -12,8 +12,14 @@ import { useAgentStream } from "@/lib/useAgentStream";
 import { getMockTicket, updateTicketStatus } from "@/lib/mockTicketService";
 import { getMockDiffForFile, getMockDiffsForChanges } from "@/lib/mockDiffService";
 import { sampleFileStructure } from "@/lib/sampleData";
+import type { FileOperation } from "@/types/agent-workflow";
 
 type ViewMode = "diff" | "code";
+
+interface CodeChangeDisplay {
+  filePath: string;
+  operation: FileOperation;
+}
 
 export default function AgentDashboard() {
   const [inputTicketId, setInputTicketId] = useState("");
@@ -35,8 +41,8 @@ export default function AgentDashboard() {
     interruptMessage,
     isRunning,
     logs,
-    start,
-    resume,
+    start: startAgentWorkflow,
+    resume: resumeWorkflow,
   } = useAgentStream(submittedTicketId);
 
   // Update ticket status when agent starts
@@ -61,7 +67,7 @@ export default function AgentDashboard() {
   // Generate mock diffs for the code changes
   const mockDiffs = useMemo(() => {
     if (codeChanges.length === 0) return {};
-    return getMockDiffsForChanges(codeChanges);
+    return getMockDiffsForChanges(codeChanges as CodeChangeDisplay[]);
   }, [codeChanges]);
 
   // Get the diff for the selected file
@@ -76,7 +82,7 @@ export default function AgentDashboard() {
     // If not, create a mock diff for it
     const matchingChange = codeChanges.find(change => change.filePath === selectedFile);
     if (matchingChange) {
-      return getMockDiffForFile(selectedFile, matchingChange.operation);
+      return getMockDiffForFile(selectedFile, matchingChange.operation as FileOperation);
     }
     
     return null;
@@ -163,8 +169,8 @@ as part of implementing ticket requirements.
     }
   }, [selectedFile, selectedDiff]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     const id = inputTicketId.trim();
     if (!id) return;
     
@@ -175,7 +181,7 @@ as part of implementing ticket requirements.
     // Update ticket status to in-progress
     updateTicketStatus(id, "in-progress");
     
-    setTimeout(start, 0);
+    setTimeout(startAgentWorkflow, 0);
   };
 
   const handleFileSelect = (filePath: string) => {
@@ -191,7 +197,7 @@ as part of implementing ticket requirements.
       const updatedTicket = getMockTicket(submittedTicketId);
       setTicketDetails(updatedTicket);
     }
-    resume(approved);
+    resumeWorkflow(approved);
   };
 
   return (
@@ -205,7 +211,7 @@ as part of implementing ticket requirements.
           type="text"
           placeholder="Jira Ticket ID (e.g. TEDU-42)"
           value={inputTicketId}
-          onChange={(e) => setInputTicketId(e.target.value)}
+          onChange={(event) => setInputTicketId(event.target.value)}
           className="flex-1 bg-gray-800 border border-gray-600 rounded-md px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           disabled={isRunning}
         />
@@ -237,8 +243,8 @@ as part of implementing ticket requirements.
                 📋 Development Plan
               </h2>
               <ol className="space-y-1.5 list-decimal list-inside">
-                {plan.map((task, i) => (
-                  <li key={i} className="text-sm text-gray-200">
+                {plan.map((task, index) => (
+                  <li key={index} className="text-sm text-gray-200">
                     {task}
                   </li>
                 ))}
@@ -274,9 +280,9 @@ as part of implementing ticket requirements.
                   <ul className="space-y-1">
                     {codeChanges
                       .filter(change => change.operation === "create")
-                      .map((change, i) => (
+                      .map((change, index) => (
                         <li 
-                          key={i} 
+                          key={index} 
                           className="flex items-center gap-2 text-sm font-mono cursor-pointer hover:bg-gray-800 p-2 rounded"
                           onClick={() => handleFileSelect(change.filePath)}
                         >
@@ -294,9 +300,9 @@ as part of implementing ticket requirements.
                   <ul className="space-y-1">
                     {codeChanges
                       .filter(change => change.operation === "modify")
-                      .map((change, i) => (
+                      .map((change, index) => (
                         <li 
-                          key={i} 
+                          key={index} 
                           className="flex items-center gap-2 text-sm font-mono cursor-pointer hover:bg-gray-800 p-2 rounded"
                           onClick={() => handleFileSelect(change.filePath)}
                         >
@@ -316,9 +322,9 @@ as part of implementing ticket requirements.
                   <ul className="space-y-1">
                     {codeChanges
                       .filter(change => change.operation === "delete")
-                      .map((change, i) => (
+                      .map((change, index) => (
                         <li 
-                          key={i} 
+                          key={index} 
                           className="flex items-center gap-2 text-sm font-mono cursor-pointer hover:bg-gray-800 p-2 rounded"
                           onClick={() => handleFileSelect(change.filePath)}
                         >
@@ -422,9 +428,9 @@ as part of implementing ticket requirements.
                 <div>
                   <p className="text-xs text-red-400 font-semibold mb-1">Failed tests:</p>
                   <ul className="list-disc list-inside space-y-0.5">
-                    {testResults.failedTests.map((t, i) => (
-                      <li key={i} className="text-xs text-red-300 font-mono">
-                        {t}
+                    {testResults.failedTests.map((testName, index) => (
+                      <li key={index} className="text-xs text-red-300 font-mono">
+                        {testName}
                       </li>
                     ))}
                   </ul>
@@ -438,7 +444,7 @@ as part of implementing ticket requirements.
             <FileExplorer 
               files={sampleFileStructure}
               onFileSelect={handleFileSelect}
-              selectedFile={selectedFile}
+              selectedFile={selectedFile ?? undefined}
             />
           )}
 
@@ -454,7 +460,7 @@ as part of implementing ticket requirements.
                 </div>
               </div>
               <div className="max-h-64 overflow-y-auto">
-                <LogStream entries={logs} />
+                <LogStream entries={[...logs]} />
               </div>
             </div>
           )}
@@ -555,7 +561,7 @@ as part of implementing ticket requirements.
                 <span>View Staging ↗</span>
               </a>
             )}
-            {testResults?.coveragePercent !== null && (
+            {testResults != null && testResults.coveragePercent != null && (
               <span className="text-xs px-2 py-1 bg-green-900 text-green-300 rounded font-mono">
                 Coverage: {testResults.coveragePercent}%
               </span>

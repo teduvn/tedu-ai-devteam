@@ -1,12 +1,13 @@
-import type { CodeDiff } from "@/components/CodeDiffViewer";
+import type { CodeDiff as CodeDiffType } from "@/components/CodeDiffViewer";
+import type { FileOperation } from "@/types/agent-workflow";
 
 export interface MockDiffOptions {
   filePath: string;
-  operation: "create" | "modify" | "delete";
+  operation: FileOperation;
   language?: string;
 }
 
-export function generateMockDiff(options: MockDiffOptions): CodeDiff {
+export function generateMockDiff(options: MockDiffOptions): CodeDiffType {
   const { filePath, operation, language } = options;
   const fileName = filePath.split("/").pop() || filePath;
   const extension = fileName.split(".").pop()?.toLowerCase() || "";
@@ -52,8 +53,9 @@ function getLanguageFromExtension(extension: string): string {
   return languageMap[extension] || "text";
 }
 
-function generateDiffContent(fileName: string, extension: string, operation: "create" | "modify" | "delete"): string {
+function generateDiffContent(fileName: string, extension: string, operation: FileOperation): string {
   const timestamp = new Date().toISOString().split("T")[0];
+  const componentName = fileName.split(".")[0];
   
   if (operation === "delete") {
     return `--- a/${fileName}
@@ -65,7 +67,7 @@ function generateDiffContent(fileName: string, extension: string, operation: "cr
 -
 -import React from "react";
 -
--export function ${fileName.split(".")[0]}() {
+-export function ${componentName}() {
 -  return (
 -    <div>
 -      <h1>This file was removed</h1>
@@ -89,10 +91,10 @@ function generateDiffContent(fileName: string, extension: string, operation: "cr
 +  children?: React.ReactNode;
 +}
 +
-+export function ${fileName.split(".")[0]}({ children }: Props) {
++export function ${componentName}({ children }: Props) {
 +  return (
 +    <div className="p-4">
-+      <h2 className="text-xl font-bold">New Component: ${fileName.split(".")[0]}</h2>
++      <h2 className="text-xl font-bold">New Component: ${componentName}</h2>
 +      <div className="mt-4">
 +        {children}
 +      </div>
@@ -110,15 +112,15 @@ function generateDiffContent(fileName: string, extension: string, operation: "cr
 +// Modified as part of implementing ticket requirements
 +// Date: ${timestamp}
 +// Changes: Added new features and improved functionality
- 
+
  import React from "react";
  import { useState } from "react";
 @@ -8,12 +10,19 @@
    children?: React.ReactNode;
  }
  
--export function ${fileName.split(".")[0]}({ children }: Props) {
-+export function ${fileName.split(".")[0]}({ children }: Props) {
+-export function ${componentName}({ children }: Props) {
++export function ${componentName}({ children }: Props) {
 +  const [isExpanded, setIsExpanded] = useState(false);
 +
 +  const handleToggle = () => {
@@ -127,7 +129,8 @@ function generateDiffContent(fileName: string, extension: string, operation: "cr
 +
    return (
      <div className="p-4">
-       <h2 className="text-xl font-bold">${fileName.split(".")[0]}</h2>
+-      <h2 className="text-xl font-bold">${componentName}</h2>
++      <h2 className="text-xl font-bold">${componentName}</h2>
 +      <button onClick={handleToggle} className="mt-2 px-3 py-1 bg-blue-600 rounded">
 +        {isExpanded ? "Collapse" : "Expand"}
 +      </button>
@@ -139,14 +142,14 @@ function generateDiffContent(fileName: string, extension: string, operation: "cr
  }`;
 }
 
-export function getMockDiffForFile(filePath: string, operation: "create" | "modify" | "delete"): CodeDiff {
+export function getMockDiffForFile(filePath: string, operation: FileOperation): CodeDiffType {
   return generateMockDiff({ filePath, operation });
 }
 
 export function getMockDiffsForChanges(
-  changes: Array<{ filePath: string; operation: "create" | "modify" | "delete" }>
-): Record<string, CodeDiff> {
-  const result: Record<string, CodeDiff> = {};
+  changes: Array<{ filePath: string; operation: FileOperation }>
+): Record<string, CodeDiffType> {
+  const result: Record<string, CodeDiffType> = {};
   
   for (const change of changes) {
     result[change.filePath] = getMockDiffForFile(change.filePath, change.operation);

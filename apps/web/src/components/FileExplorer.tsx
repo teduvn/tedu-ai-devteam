@@ -1,21 +1,27 @@
 "use client";
 
 import { useState } from "react";
-
-interface FileNode {
-  name: string;
-  type: "file" | "directory";
-  children?: FileNode[];
-  path: string;
-}
+import type { FileSystemNode } from "@/types/agent-workflow";
 
 interface FileExplorerProps {
-  files: FileNode[];
+  files: FileSystemNode[];
   onFileSelect?: (path: string) => void;
   selectedFile?: string;
 }
 
-const FileIcon = ({ type, name }: { type: "file" | "directory"; name: string }) => {
+interface FileIconProps {
+  type: "file" | "directory";
+  name: string;
+}
+
+interface FileTreeNodeProps {
+  node: FileSystemNode;
+  level?: number;
+  onFileSelect?: (path: string) => void;
+  selectedFile?: string;
+}
+
+const FileIcon = ({ type, name }: FileIconProps) => {
   if (type === "directory") {
     return <span className="text-blue-400">📁</span>;
   }
@@ -44,12 +50,7 @@ const FileTreeNode = ({
   level = 0, 
   onFileSelect, 
   selectedFile 
-}: { 
-  node: FileNode;
-  level: number;
-  onFileSelect?: (path: string) => void;
-  selectedFile?: string;
-}) => {
+}: FileTreeNodeProps) => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   const handleClick = () => {

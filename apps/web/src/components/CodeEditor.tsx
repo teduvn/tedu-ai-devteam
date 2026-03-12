@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface CodeEditorProps {
   initialContent?: string;
@@ -17,13 +17,14 @@ export default function CodeEditor({
 }: CodeEditorProps) {
   const [content, setContent] = useState(initialContent);
   const [isCopied, setIsCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setContent(initialContent);
   }, [initialContent]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
+  const handleChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = event.target.value;
     setContent(newContent);
     if (onChange) {
       onChange(newContent);
@@ -31,17 +32,21 @@ export default function CodeEditor({
   };
 
   const handleCopy = async () => {
+    if (!content.trim()) return;
+    
     try {
       await navigator.clipboard.writeText(content);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (error) {
-      console.error("Failed to copy:", error);
+      console.error("Failed to copy text to clipboard:", error);
     }
   };
 
   const lines = content.split("\n").length;
-  const lineNumbers = Array.from({ length: lines }, (_, i) => i + 1);
+  const lineNumbers = Array.from({ length: lines }, (_, index) => index + 1);
+
+  const isCopyDisabled = readOnly && !content.trim();
 
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
@@ -58,12 +63,12 @@ export default function CodeEditor({
         </div>
         <button
           onClick={handleCopy}
-          disabled={readOnly && !content}
+          disabled={isCopyDisabled}
           className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
             isCopied
               ? "bg-green-700 text-green-100"
               : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-          } ${(readOnly && !content) ? "opacity-50 cursor-not-allowed" : ""}`}
+          } ${isCopyDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
         >
           {isCopied ? "Copied! ✓" : "Copy"}
         </button>
@@ -72,13 +77,13 @@ export default function CodeEditor({
       <div className="flex font-mono text-sm">
         {/* Line numbers */}
         <div className="bg-gray-800 text-gray-500 text-right py-2 select-none overflow-hidden">
-          {lineNumbers.map((num) => (
+          {lineNumbers.map((lineNumber) => (
             <div
-              key={num}
+              key={lineNumber}
               className="px-3 min-h-[1.5em] leading-6"
               style={{ lineHeight: "1.5em" }}
             >
-              {num}
+              {lineNumber}
             </div>
           ))}
         </div>
@@ -86,6 +91,7 @@ export default function CodeEditor({
         {/* Code content */}
         <div className="flex-1 overflow-auto">
           <textarea
+            ref={textareaRef}
             value={content}
             onChange={handleChange}
             readOnly={readOnly}

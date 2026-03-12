@@ -1,14 +1,9 @@
 "use client";
 
-interface CodeDiff {
-  filePath: string;
-  operation: "create" | "modify" | "delete";
-  diff: string;
-  language: string;
-}
+import type { CodeDiff as CodeDiffType, FileOperation } from "@/types/agent-workflow";
 
 interface CodeDiffViewerProps {
-  diff: CodeDiff;
+  diff: CodeDiffType;
 }
 
 export default function CodeDiffViewer({ diff }: CodeDiffViewerProps) {
@@ -52,6 +47,19 @@ export default function CodeDiffViewer({ diff }: CodeDiffViewerProps) {
     return lineNumber;
   };
 
+  const getOperationColor = (operation: FileOperation): string => {
+    switch (operation) {
+      case "create":
+        return "bg-green-900 text-green-300";
+      case "modify":
+        return "bg-yellow-900 text-yellow-300";
+      case "delete":
+        return "bg-red-900 text-red-300";
+      default:
+        return "bg-gray-700 text-gray-300";
+    }
+  };
+
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
       <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 flex justify-between items-center">
@@ -62,11 +70,7 @@ export default function CodeDiffViewer({ diff }: CodeDiffViewerProps) {
             <div className="w-3 h-3 rounded-full bg-green-500" />
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-xs px-2 py-1 rounded ${
-              diff.operation === "create" ? "bg-green-900 text-green-300" :
-              diff.operation === "modify" ? "bg-yellow-900 text-yellow-300" :
-              "bg-red-900 text-red-300"
-            }`}>
+            <span className={`text-xs px-2 py-1 rounded ${getOperationColor(diff.operation)}`}>
               {diff.operation}
             </span>
             <span className="text-xs text-gray-400 font-mono truncate max-w-md">

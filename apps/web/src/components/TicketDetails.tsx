@@ -1,28 +1,37 @@
 "use client";
 
+import type { TicketPriority, TicketType, TicketStatus } from "@/types/agent-workflow";
+
 interface TicketDetailsProps {
   ticket: {
     id: string;
     summary: string;
     description: string;
-    priority: "low" | "medium" | "high" | "critical";
-    type: "bug" | "feature" | "task" | "improvement";
+    priority: TicketPriority;
+    type: TicketType;
     assignee: string | null;
     labels: string[];
-    status: "todo" | "in-progress" | "review" | "done";
+    status: TicketStatus;
     createdAt: string;
     updatedAt: string;
   };
   className?: string;
 }
 
-const PriorityBadge = ({ priority }: { priority: string }) => {
-  const config = {
+interface BadgeConfig {
+  color: string;
+  icon: string;
+}
+
+const PriorityBadge = ({ priority }: { priority: TicketPriority }) => {
+  const priorityConfig: Record<TicketPriority, BadgeConfig> = {
     critical: { color: "bg-red-900 text-red-300", icon: "🔥" },
     high: { color: "bg-orange-900 text-orange-300", icon: "⚠️" },
     medium: { color: "bg-yellow-900 text-yellow-300", icon: "📋" },
     low: { color: "bg-blue-900 text-blue-300", icon: "📄" },
-  }[priority] || { color: "bg-gray-700 text-gray-300", icon: "?" };
+  };
+
+  const config = priorityConfig[priority];
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${config.color}`}>
@@ -32,13 +41,15 @@ const PriorityBadge = ({ priority }: { priority: string }) => {
   );
 };
 
-const TypeBadge = ({ type }: { type: string }) => {
-  const config = {
+const TypeBadge = ({ type }: { type: TicketType }) => {
+  const typeConfig: Record<TicketType, BadgeConfig> = {
     bug: { color: "bg-red-800 text-red-200", icon: "🐛" },
     feature: { color: "bg-green-800 text-green-200", icon: "✨" },
     task: { color: "bg-blue-800 text-blue-200", icon: "📋" },
     improvement: { color: "bg-purple-800 text-purple-200", icon: "⚡" },
-  }[type] || { color: "bg-gray-700 text-gray-300", icon: "?" };
+  };
+
+  const config = typeConfig[type];
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${config.color}`}>
@@ -48,13 +59,15 @@ const TypeBadge = ({ type }: { type: string }) => {
   );
 };
 
-const StatusBadge = ({ status }: { status: string }) => {
-  const config = {
+const StatusBadgeComponent = ({ status }: { status: TicketStatus }) => {
+  const statusConfig: Record<TicketStatus, BadgeConfig> = {
     todo: { color: "bg-gray-700 text-gray-300", icon: "⏳" },
     "in-progress": { color: "bg-blue-700 text-blue-300", icon: "⚙️" },
     review: { color: "bg-yellow-700 text-yellow-300", icon: "👁️" },
     done: { color: "bg-green-700 text-green-300", icon: "✅" },
-  }[status] || { color: "bg-gray-700 text-gray-300", icon: "?" };
+  };
+
+  const config = statusConfig[status];
 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${config.color}`}>
@@ -65,15 +78,20 @@ const StatusBadge = ({ status }: { status: string }) => {
 };
 
 export default function TicketDetails({ ticket, className = "" }: TicketDetailsProps) {
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      console.error("Failed to format date:", error);
+      return "Invalid date";
+    }
   };
 
   return (
@@ -86,7 +104,7 @@ export default function TicketDetails({ ticket, className = "" }: TicketDetailsP
         <div className="flex gap-2">
           <PriorityBadge priority={ticket.priority} />
           <TypeBadge type={ticket.type} />
-          <StatusBadge status={ticket.status} />
+          <StatusBadgeComponent status={ticket.status} />
         </div>
       </div>
 

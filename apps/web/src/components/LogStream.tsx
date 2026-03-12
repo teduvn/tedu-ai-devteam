@@ -1,12 +1,7 @@
-interface LogEntry {
-  id: number;
-  node: string;
-  message: string;
-  timestamp: string;
-}
+import type { AgentLogEntry } from "@/types/agent-workflow";
 
-interface Props {
-  entries: LogEntry[];
+interface LogStreamProps {
+  entries: AgentLogEntry[];
 }
 
 const NODE_ICON: Record<string, string> = {
@@ -18,9 +13,13 @@ const NODE_ICON: Record<string, string> = {
   started: "▶",
   completed: "✅",
   error: "❌",
+  parse_error: "⚠️",
+  connection_error: "🔌",
+  resume_error: "🔄",
+  deploying_production: "🚀",
 };
 
-export default function LogStream({ entries }: Props) {
+export default function LogStream({ entries }: LogStreamProps) {
   return (
     <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
       <div className="px-4 py-2 border-b border-gray-700 flex items-center gap-2">
@@ -47,4 +46,4 @@ export default function LogStream({ entries }: Props) {
   );
 }
 
-export type { LogEntry };
+export type { AgentLogEntry as LogEntry };

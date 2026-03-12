@@ -1,12 +1,14 @@
+import type { TicketPriority, TicketType, TicketStatus } from "@/types/agent-workflow";
+
 export interface Ticket {
   id: string;
   summary: string;
   description: string;
-  priority: "low" | "medium" | "high" | "critical";
-  type: "bug" | "feature" | "task" | "improvement";
+  priority: TicketPriority;
+  type: TicketType;
   assignee: string | null;
   labels: string[];
-  status: "todo" | "in-progress" | "review" | "done";
+  status: TicketStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,7 +148,7 @@ export function getAllMockTickets(): Ticket[] {
   return Object.values(mockTickets);
 }
 
-export function updateTicketStatus(ticketId: string, status: Ticket["status"]): boolean {
+export function updateTicketStatus(ticketId: string, status: TicketStatus): boolean {
   const normalizedId = ticketId.toUpperCase();
   if (mockTickets[normalizedId]) {
     mockTickets[normalizedId].status = status;
