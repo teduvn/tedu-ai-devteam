@@ -1,0 +1,20 @@
+{
+  "name": "@tedu/mcp-servers",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "jira": "tsx src/jira-server.ts",
+    "github": "tsx src/github-server.ts",
+    "filesystem": "tsx src/filesystem-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
