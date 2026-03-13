@@ -8,13 +8,13 @@ An AI-powered development team that automates the Software Development Life Cycl
 Jira Ticket
     │
     ▼
-┌─────────────┐      ┌─────────────┐      ┌──────────────────┐
-│  PM Agent   │───▶  │ Coder Agent │───▶  │  DevOps Agent    │
-│             │      │             │      │  (staging deploy) │
-│ - Đọc Jira  │      │ - Viết code │      │ - Tạo branch     │
-│ - Lập kế    │      │ - Review    │      │ - Commit & PR    │
-│   hoạch     │      │   code      │      │ - Deploy staging │
-└─────────────┘      └─────────────┘      └──────────────────┘
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌──────────────────┐
+│  BA Agent   │───▶  │  PM Agent   │───▶  │ Coder Agent │───▶  │  DevOps Agent    │
+│             │      │             │      │             │      │  (staging deploy) │
+│ - Quét To Do│      │ - Đọc Jira  │      │ - Viết code │      │ - Tạo branch     │
+│ - Viết story│      │ - Lập kế    │      │ - Review    │      │ - Commit & PR    │
+│ - Ready Dev │      │   hoạch     │      │   code      │      │ - Deploy staging │
+└─────────────┘      └─────────────┘      └─────────────┘      └──────────────────┘
                                                     │
                         ┌───────────────────────────┘
                         ▼
@@ -49,8 +49,9 @@ Jira Ticket
 
 | Thành phần | Công nghệ | Mô tả |
 |---|---|---|
+| **BA Agent** | LangGraph Node + Jira MCP | Quét ticket `To Do`, sinh User Story tiếng Việt, cập nhật description và chuyển `Ready for Dev` |
 | **Orchestration** | LangGraph.js | Điều phối luồng giữa các agent |
-| **LLM** | Claude Sonnet (Anthropic) | Não xử lý của từng agent |
+| **LLM** | Claude Sonnet / OpenAI (configurable) | Não xử lý của từng agent |
 | **MCP Servers** | Model Context Protocol | "Tay" của agent — gọi Jira, GitHub, Filesystem |
 | **Dashboard** | Next.js 15 + React 19 | Giao diện theo dõi realtime qua SSE |
 | **Styling** | Tailwind CSS | Dark GitHub-style theme |
@@ -58,7 +59,7 @@ Jira Ticket
 
 ### Jira Ticket Statuses
 
-`Todo` → `Ready for Dev` → `In Progress` → `Ready for Testing` → `Testing` → `Ready for Release` → `Done`
+`To Do` → `Ready for Dev` → `In Progress` → `Ready for Testing` → `Testing` → `Ready for Release` → `Done`
 
 (hoặc `Canceled` nếu bị từ chối)
 
@@ -68,7 +69,7 @@ Jira Ticket
 
 - **Node.js** >= 22
 - **pnpm** >= 10 (`npm install -g pnpm`)
-- Tài khoản **Anthropic** (Claude API key)
+- Tài khoản **Anthropic** (Claude API key) hoặc **DeepSeek** (API key)
 - Tài khoản **Jira Cloud** với API token
 - Tài khoản **GitHub** với Personal Access Token (scopes: `repo`, `workflow`)
 
@@ -91,15 +92,30 @@ pnpm install
 
 ### 3. Cấu hình biến môi trường
 
+Mac/Linux:
+
 ```bash
 cp .env.example .env
+```
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
 ```
 
 Mở `.env` và điền thông tin:
 
 ```env
-# LLM
+# LLM Provider
+LLM_PROVIDER=anthropic
+# LLM_MODEL=claude-sonnet-4-5
+
+# Anthropic (bắt buộc khi LLM_PROVIDER=anthropic)
 ANTHROPIC_API_KEY=sk-ant-...
+
+# DeepSeek (bắt buộc khi LLM_PROVIDER=deepseek)
+DEEPSEEK_API_KEY=sk-your_deepseek_key_here
 
 # Jira
 JIRA_BASE_URL=https://your-company.atlassian.net
@@ -112,7 +128,19 @@ GITHUB_TOKEN=ghp_...
 GITHUB_OWNER=your_github_username_or_org
 GITHUB_REPO=your_repository_name
 GITHUB_BASE_BRANCH=main
+
+# Filesystem
+WORKSPACE_DIR=/tmp/tedu-workspace
+
+# App
+NODE_ENV=development
+PORT=3000
 ```
+
+Ghi chú nhanh:
+- `LLM_PROVIDER` hỗ trợ: `anthropic` (mặc định) hoặc `deepseek`.
+- `LLM_MODEL` là tùy chọn để override model mặc định theo provider.
+- Trên Windows, nên đổi `WORKSPACE_DIR` sang đường dẫn local, ví dụ: `C:/SourceCodes/tedu-workspace`.
 
 > **Lấy Jira API Token:** https://id.atlassian.com/manage-profile/security/api-tokens  
 > **Lấy GitHub PAT:** Settings → Developer settings → Personal access tokens → Tokens (classic)
@@ -125,16 +153,20 @@ GITHUB_BASE_BRANCH=main
 
 Mở **2 terminal** chạy song song:
 
-**Terminal 1 — Next.js Dashboard:**
+**Terminal 1 — Next.js Dashboard (chạy từ root):**
 ```bash
 pnpm dev
 ```
 Truy cập: http://localhost:3000
 
-**Terminal 2 — Agent package (nếu test standalone):**
+**Terminal 2 — Agent package (chạy từ root):**
 ```bash
 pnpm agent:start
 ```
+
+Ghi chú:
+- `pnpm dev` map tới script root: `pnpm --filter @tedu/web dev`
+- `pnpm agent:start` map tới script root: `pnpm --filter @tedu/agents dev`
 
 ### Build production
 
@@ -189,6 +221,7 @@ tedu-ai-devteam/
 │   │       ├── env.ts              # Zod-validated env vars
 │   │       ├── index.ts            # Public exports
 │   │       ├── nodes/
+│   │       │   ├── ba-agent.ts     # Business Analyst Agent
 │   │       │   ├── pm-agent.ts     # Product Manager Agent
 │   │       │   ├── coder-agent.ts  # Coder Agent
 │   │       │   ├── devops-agent.ts # DevOps Agent (staging + production)
@@ -208,6 +241,7 @@ tedu-ai-devteam/
 │
 ├── .env.example
 ├── .gitignore
+├── agent-statuses/                # Runtime status JSON (local only, đã ignore)
 ├── package.json
 ├── pnpm-workspace.yaml
 └── tsconfig.json
@@ -259,6 +293,9 @@ tedu-ai-devteam/
 ---
 
 ## Troubleshooting
+
+**File trong `agent-statuses/` vẫn hiện ở Git sau khi thêm `.gitignore`**  
+→ Chạy `git rm -r --cached agent-statuses/` một lần để untrack các file đã lỡ track trước đó.
 
 **`Cannot find module '@tedu/agents'`**  
 → Chạy `pnpm install` từ root để link workspace packages.
