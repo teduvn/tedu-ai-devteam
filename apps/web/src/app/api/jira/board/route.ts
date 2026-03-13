@@ -53,23 +53,28 @@ export async function GET() {
   }
 
   const auth = `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`;
-  const jql = encodeURIComponent(
-    `project = "${projectKey}" AND statusCategory != Done ORDER BY priority DESC, updated DESC`,
-  );
-  const doneJql = encodeURIComponent(
-    `project = "${projectKey}" AND status in ("Done","Canceled") ORDER BY updated DESC`,
-  );
+  const headers = { Authorization: auth, Accept: "application/json", "Content-Type": "application/json" };
 
   try {
     const [activeResp, doneResp] = await Promise.all([
-      fetch(
-        `${baseUrl}/rest/api/3/search?jql=${jql}&maxResults=100&fields=summary,status,priority,issuetype,assignee`,
-        { headers: { Authorization: auth, Accept: "application/json" } },
-      ),
-      fetch(
-        `${baseUrl}/rest/api/3/search?jql=${doneJql}&maxResults=20&fields=summary,status,priority,issuetype,assignee`,
-        { headers: { Authorization: auth, Accept: "application/json" } },
-      ),
+      fetch(`${baseUrl}/rest/api/3/search/jql`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          jql: `project = "${projectKey}" AND statusCategory != Done ORDER BY priority DESC, updated DESC`,
+          maxResults: 100,
+          fields: ["summary", "status", "priority", "issuetype", "assignee"],
+        }),
+      }),
+      fetch(`${baseUrl}/rest/api/3/search/jql`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          jql: `project = "${projectKey}" AND status in ("Done","CANCELED") ORDER BY updated DESC`,
+          maxResults: 20,
+          fields: ["summary", "status", "priority", "issuetype", "assignee"],
+        }),
+      }),
     ]);
 
     if (!activeResp.ok) {

@@ -85,7 +85,11 @@ async function fetchReadyForDevTickets(): Promise<ReadyTicket[]> {
     if (!listTool) throw new Error("list_ready_for_dev_tickets tool not found");
 
     const raw = await listTool.invoke({});
-    const result = JSON.parse(raw as string) as ListResult;
+    const rawStr = String(raw);
+    if (rawStr.startsWith("[MCP Error]") || rawStr.startsWith("[Error]")) {
+      throw new Error(rawStr);
+    }
+    const result = JSON.parse(rawStr) as ListResult;
     return result.tickets;
   } finally {
     await closeMCPClient(client);

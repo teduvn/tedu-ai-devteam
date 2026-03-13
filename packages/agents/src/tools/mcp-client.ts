@@ -86,6 +86,15 @@ export async function createMCPTools(
       func: async (input: Record<string, unknown>) => {
         try {
           const result = await client.callTool({ name: mcpTool.name, arguments: input });
+          if (result.isError) {
+            const errorMsg = Array.isArray(result.content)
+              ? result.content
+                  .filter((c) => c.type === "text")
+                  .map((c) => (c as { type: "text"; text: string }).text)
+                  .join("\n")
+              : "Tool returned an error";
+            throw new Error(errorMsg);
+          }
           const content = result.content;
           if (Array.isArray(content)) {
             return content

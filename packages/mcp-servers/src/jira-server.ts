@@ -216,10 +216,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         .parse(args ?? {});
 
       const jql = encodeURIComponent(
-        `project = "${jiraEnv.JIRA_PROJECT_KEY}" AND status = "Ready for Dev" ORDER BY priority DESC`,
+        `project = "${jiraEnv.JIRA_PROJECT_KEY}" AND status = "READY FOR DEV" ORDER BY priority DESC`,
       );
       const resp = await fetch(
-        `${jiraEnv.JIRA_BASE_URL}/rest/api/3/search?jql=${jql}&maxResults=${maxResults ?? 10}&fields=summary,priority,status,assignee,issuetype`,
+        `${jiraEnv.JIRA_BASE_URL}/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults ?? 10}&fields=summary,priority,status,assignee,issuetype`,
         { headers: HEADERS },
       );
       if (!resp.ok)
