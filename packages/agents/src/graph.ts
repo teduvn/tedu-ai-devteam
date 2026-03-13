@@ -1,5 +1,6 @@
 import { StateGraph, MemorySaver } from "@langchain/langgraph";
 import { AgentState } from "./state.js";
+import { baSingleNode } from "./nodes/ba-agent.js";
 import { pmNode } from "./nodes/pm-agent.js";
 import { coderNode } from "./nodes/coder-agent.js";
 import { devopsNode } from "./nodes/devops-agent.js";
@@ -17,26 +18,28 @@ const checkpointer = new MemorySaver();
 
 // ─── Graph Definition ─────────────────────────────────────────────────────────
 //
-//  START → pm_agent → coder_agent ──→ devops_agent (staging)
-//               ↑                          ↓
-//               │                     tester_agent
-//               │                    ↙           ↘
-//               │           (fail/retry)       human_review
-//               └──────────────────┘               ↓ (approved)
-//                                           devops_agent (production)
-//                                                   ↓
-//                                                  END
+//  START → ba_agent → pm_agent → coder_agent ──→ devops_agent (staging)
+//                         ↑                            ↓
+//                         │                       tester_agent
+//                         │                      ↙           ↘
+//                         │             (fail/retry)       human_review
+//                         └──────────────────────┘               ↓ (approved)
+//                                                         devops_agent (production)
+//                                                                 ↓
+//                                                                END
 //
 const workflow = new StateGraph(AgentState)
   // Nodes
+  .addNode("ba_agent", baSingleNode)
   .addNode("pm_agent", pmNode)
   .addNode("coder_agent", coderNode)
   .addNode("devops_agent", devopsNode)
   .addNode("tester_agent", testerNode)
   .addNode("human_review", humanReviewNode)
 
-  // Entry
-  .addEdge("__start__", "pm_agent")
+  // Entry: BA enriches the ticket with a user story before PM analyses it
+  .addEdge("__start__", "ba_agent")
+  .addEdge("ba_agent", "pm_agent")
   .addEdge("pm_agent", "coder_agent")
 
   // Coder → DevOps | end

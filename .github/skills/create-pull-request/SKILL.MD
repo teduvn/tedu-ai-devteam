@@ -1,59 +1,59 @@
 name: create-pull-request
-description: Extract code changes and commit messages to generate Pull Request content following WeCheer standard template.
+description: Trích xuất các thay đổi code và commit message để tạo nội dung Pull Request theo mẫu chuẩn của WeCheer.
 
 
-# Instructions for Create Pull Request Skill
+# Hướng dẫn Kỹ năng Tạo Pull Request
 
-When a user requests to create a Pull Request or draft PR content, follow these steps:
+Khi người dùng yêu cầu tạo Pull Request hoặc soạn thảo nội dung PR, thực hiện các bước sau:
 
-1. **Information Gathering:**
-   - Scan the latest commit messages and changed files (diff) in the current branch.
-    - Search for Jira ticket code (e.g., WEE-123) in the branch name or commit messages.
-    - For PR title:
-       - If the branch name contains a Jira ticket (e.g., WEE-123), set the PR title as `[Jira Ticket ID]: [Summary]`.
-       - If no Jira ticket is found, set the PR title as `[Summary]` (do not use the prefix 'Jira ticket:').
+1. **Thu thập Thông tin:**
+   - Quét các commit message và file đã thay đổi (diff) trong nhánh hiện tại.
+   - Tìm kiếm mã Jira ticket (vd: WEE-123) trong tên nhánh hoặc commit message.
+   - Đối với tiêu đề PR:
+      - Nếu tên nhánh chứa Jira ticket (vd: WEE-123), đặt tiêu đề PR là `[Jira Ticket ID]: [Tóm tắt]`.
+      - Nếu không tìm thấy Jira ticket, đặt tiêu đề PR là `[Tóm tắt]` (không dùng tiền tố 'Jira ticket:').
 
-2. **Content Generation:**
-   - Always present in **English** using the format below.
-   - The "What I Have Changed" section must be based on actual code logic analysis, not fabricated.
-
-
-
-## Pull Request Template
-
-**Title:**
-`[Jira Ticket ID]: [Summary]` (if branch name contains Jira ticket)
-`[Summary]` (if branch name does not contain Jira ticket)
-
-### Description:
-Please provide a clear and concise description of the problem or feature addressed by this pull request. Add context or background information if needed.
-
-### What I Have Changed:
-*Describe in detail the changes made in this pull request. This can include code changes, configuration updates, or other modifications.*
-
-* **High-level overview:** [Agent: Summarize the most important changes and list the main files].
-* **Technical details:** [Agent: Mention changes in logic, algorithms, or technical considerations for reviewers].
-* **Code Snippets:** [Agent: Quote the most important code snippets if there are major changes].
-
-### Configuration Changes (if applicable):
-*List any configuration changes that need to be made or updated (e.g., JSON files, environment variables).*
-
-### Evidence (Screenshots or Logs):
-*Include screenshots, log output, or any other evidence that helps illustrate and verify the changes.*
-*(Note: Manual input required from developer)*
-
-### Outcome success metric events:
-How the success of the feature will be measured with the events created.
-
-### Additional Notes:
-Any additional information, potential challenges, trade-offs, or testing steps that reviewers should know.
+2. **Tạo Nội dung:**
+   - Luôn trình bày bằng **tiếng Việt** theo định dạng dưới đây.
+   - Phần "Những gì tôi đã thay đổi" phải dựa trên phân tích logic code thực tế, không bịa đặt.
 
 
-## Standard Commit Messages Reference:
-When suggesting or reviewing commits, prioritize the following formats:
-- rename parameters
-- update tracking id
-- update short link parameters
-- fix unit tests
 
-*This section should be a list of all commit messages included in the current change. Extract and display each commit message from the branch being merged.*
+## Mẫu Pull Request
+
+**Tiêu đề:**
+`[Jira Ticket ID]: [Tóm tắt]` (nếu tên nhánh chứa Jira ticket)
+`[Tóm tắt]` (nếu tên nhánh không chứa Jira ticket)
+
+### Mô tả:
+Vui lòng cung cấp mô tả rõ ràng và súc tích về vấn đề hoặc tính năng được đề cập trong pull request này. Thêm ngữ cảnh hoặc thông tin nền tảng nếu cần.
+
+### Những gì tôi đã thay đổi:
+*Mô tả chi tiết các thay đổi được thực hiện trong pull request này. Có thể bao gồm thay đổi code, cập nhật cấu hình hoặc các sửa đổi khác.*
+
+* **Tổng quan cấp cao:** [Agent: Tóm tắt các thay đổi quan trọng nhất và liệt kê các file chính].
+* **Chi tiết kỹ thuật:** [Agent: Đề cập các thay đổi trong logic, thuật toán hoặc các cân nhắc kỹ thuật cho người review].
+* **Đoạn code tiêu biểu:** [Agent: Trích dẫn các đoạn code quan trọng nhất nếu có thay đổi lớn].
+
+### Thay đổi Cấu hình (nếu có):
+*Liệt kê bất kỳ thay đổi cấu hình nào cần được thực hiện hoặc cập nhật (vd: file JSON, biến môi trường).*
+
+### Bằng chứng (Ảnh chụp màn hình hoặc Log):
+*Bao gồm ảnh chụp màn hình, output log hoặc bằng chứng nào khác giúp minh họa và xác minh các thay đổi.*
+*(Lưu ý: Yêu cầu nhập liệu thủ công từ lập trình viên)*
+
+### Chỉ số thành công của kết quả:
+Cách đo lường sự thành công của tính năng thông qua các sự kiện được tạo ra.
+
+### Ghi chú Thêm:
+Bất kỳ thông tin bổ sung, thách thức tiềm ẩn, đánh đổi hoặc các bước kiểm thử nào mà người review cần biết.
+
+
+## Tham khảo Commit Message Chuẩn:
+Khi đề xuất hoặc review commit, ưu tiên các định dạng sau:
+- đổi tên tham số
+- cập nhật tracking id
+- cập nhật tham số short link
+- sửa unit test
+
+*Phần này nên là danh sách tất cả các commit message có trong thay đổi hiện tại. Trích xuất và hiển thị từng commit message từ nhánh đang được merge.*

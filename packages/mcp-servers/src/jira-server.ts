@@ -83,6 +83,36 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: [],
       },
     },
+    {
+      name: "list_todo_tickets",
+      description:
+        "Search for all tickets in the project with status 'To Do', ordered by priority descending.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          maxResults: {
+            type: "number",
+            description: "Maximum number of tickets to return (default 20)",
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "update_ticket_description",
+      description: "Update the description field of a Jira ticket with new content.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          ticketId: { type: "string", description: "Jira ticket ID, e.g. TEDU-42" },
+          description: {
+            type: "string",
+            description: "New description content in plain Markdown text",
+          },
+        },
+        required: ["ticketId", "description"],
+      },
+    },
   ],
 }));
 
@@ -258,6 +288,83 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    if (name === "list_todo_tickets") {
+      const { maxResults } = z
+        .object({ maxResults: z.number().optional() })
+        .parse(args ?? {});
+
+      const jql = encodeURIComponent(
+        `project = "${jiraEnv.JIRA_PROJECT_KEY}" AND status = "To Do" ORDER BY priority DESC`,
+      );
+      const resp = await fetch(
+        `${jiraEnv.JIRA_BASE_URL}/rest/api/3/search/jql?jql=${jql}&maxResults=${maxResults ?? 20}&fields=summary,priority,status,assignee,issuetype`,
+        { headers: HEADERS },
+      );
+      if (!resp.ok)
+        throw new Error(`Jira search ${resp.status}: ${await resp.text()}`);
+
+      const data = (await resp.json()) as {
+        total: number;
+        issues: Array<{
+          key: string;
+          fields: {
+            summary: string;
+            priority?: { name: string };
+            status?: { name: string };
+            assignee?: { displayName: string };
+            issuetype?: { name: string };
+          };
+        }>;
+      };
+
+      const tickets = data.issues.map((issue) => ({
+        id: issue.key,
+        summary: issue.fields.summary,
+        priority: (issue.fields.priority?.name ?? "medium").toLowerCase(),
+        type: (issue.fields.issuetype?.name ?? "task").toLowerCase(),
+        assignee: issue.fields.assignee?.displayName ?? null,
+        status: issue.fields.status?.name ?? "To Do",
+      }));
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ total: data.total, tickets }),
+          },
+        ],
+      };
+    }
+
+    if (name === "update_ticket_description") {
+      const { ticketId, description } = z
+        .object({ ticketId: z.string(), description: z.string() })
+        .parse(args);
+
+      // Convert markdown to a minimal Atlassian Document Format (ADF)
+      const adfContent = markdownToADF(description);
+
+      const resp = await fetch(
+        `${jiraEnv.JIRA_BASE_URL}/rest/api/3/issue/${ticketId}`,
+        {
+          method: "PUT",
+          headers: HEADERS,
+          body: JSON.stringify({ fields: { description: adfContent } }),
+        },
+      );
+      if (!resp.ok && resp.status !== 204)
+        throw new Error(`Jira update ${resp.status}: ${await resp.text()}`);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Description updated for ${ticketId}`,
+          },
+        ],
+      };
+    }
+
     throw new Error(`Unknown tool: ${name}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -267,6 +374,105 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
+
+// ─── Markdown → ADF Converter ─────────────────────────────────────────────────
+
+interface ADFNode {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: ADFNode[];
+  text?: string;
+  marks?: Array<{ type: string }>;
+}
+
+function markdownToADF(markdown: string): ADFNode {
+  const lines = markdown.split("\n");
+  const content: ADFNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (line.trim() === "") {
+      i++;
+      continue;
+    }
+
+    // Headings
+    const h2Match = line.match(/^## (.+)/);
+    const h3Match = line.match(/^### (.+)/);
+    const h1Match = line.match(/^# (.+)/);
+    if (h1Match) {
+      content.push({ type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: h1Match[1] }] });
+      i++;
+      continue;
+    }
+    if (h2Match) {
+      content.push({ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: h2Match[1] }] });
+      i++;
+      continue;
+    }
+    if (h3Match) {
+      content.push({ type: "heading", attrs: { level: 3 }, content: [{ type: "text", text: h3Match[1] }] });
+      i++;
+      continue;
+    }
+
+    // Horizontal rule
+    if (line.trim() === "---") {
+      content.push({ type: "rule" });
+      i++;
+      continue;
+    }
+
+    // Bullet list item
+    if (line.match(/^[-*] /)) {
+      const listItems: ADFNode[] = [];
+      while (i < lines.length && lines[i].match(/^[-*] /)) {
+        const itemText = lines[i].replace(/^[-*] /, "");
+        listItems.push({
+          type: "listItem",
+          content: [{ type: "paragraph", content: [{ type: "text", text: itemText }] }],
+        });
+        i++;
+      }
+      content.push({ type: "bulletList", content: listItems });
+      continue;
+    }
+
+    // Numbered list item
+    if (line.match(/^\d+\. /)) {
+      const listItems: ADFNode[] = [];
+      while (i < lines.length && lines[i].match(/^\d+\. /)) {
+        const itemText = lines[i].replace(/^\d+\. /, "");
+        listItems.push({
+          type: "listItem",
+          content: [{ type: "paragraph", content: [{ type: "text", text: itemText }] }],
+        });
+        i++;
+      }
+      content.push({ type: "orderedList", content: listItems });
+      continue;
+    }
+
+    // Blockquote (> lines)
+    if (line.startsWith("> ")) {
+      const quoteText = line.slice(2);
+      content.push({
+        type: "blockquote",
+        content: [{ type: "paragraph", content: [{ type: "text", text: quoteText }] }],
+      });
+      i++;
+      continue;
+    }
+
+    // Regular paragraph
+    content.push({ type: "paragraph", content: [{ type: "text", text: line }] });
+    i++;
+  }
+
+  return { type: "doc", version: 1 as unknown as string, content } as unknown as ADFNode;
+}
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
 
