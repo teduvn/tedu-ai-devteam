@@ -215,6 +215,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["stagingUrl", "paths"],
       },
     },
+    {
+      name: "inspect_repository_structure",
+      description:
+        "Inspect repository directory structure from the configured base branch. Useful for architecture analysis before implementation.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          maxDepth: {
+            type: "number",
+            description: "Maximum directory depth to scan (default 3)",
+          },
+          maxEntries: {
+            type: "number",
+            description: "Maximum number of paths to return (default 200)",
+          },
+          baseBranch: {
+            type: "string",
+            description: "Branch to inspect (optional, defaults to GITHUB_BASE_BRANCH)",
+          },
+        },
+        required: [],
+      },
+    },
+    {
+      name: "read_repository_file",
+      description:
+        "Read a text file from the repository at the configured base branch. Useful for architectural context and design proposals.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Repository-relative path to read, e.g. packages/agents/src/graph.ts",
+          },
+          baseBranch: {
+            type: "string",
+            description: "Branch to inspect (optional, defaults to GITHUB_BASE_BRANCH)",
+          },
+          maxChars: {
+            type: "number",
+            description: "Maximum characters to return (default 12000)",
+          },
+        },
+        required: ["filePath"],
+      },
+    },
   ],
 }));
 
@@ -522,6 +568,100 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           {
             type: "text" as const,
             text: JSON.stringify({ allOk, results }),
+          },
+        ],
+      };
+    }
+
+    if (name === "inspect_repository_structure") {
+      const { maxDepth, maxEntries, baseBranch } = z
+        .object({
+          maxDepth: z.number().int().min(1).max(10).optional(),
+          maxEntries: z.number().int().min(10).max(1000).optional(),
+          baseBranch: z.string().optional(),
+        })
+        .parse(args ?? {});
+
+      const base = baseBranch ?? ghEnv.GITHUB_BASE_BRANCH;
+      const repoDir = await ensureMainClone(base);
+      const depthLimit = maxDepth ?? 3;
+      const entryLimit = maxEntries ?? 200;
+      const entries: string[] = [];
+
+      async function walk(currentDir: string, relativeDir: string, depth: number): Promise<void> {
+        if (depth > depthLimit || entries.length >= entryLimit) return;
+
+        const items = await fs.readdir(currentDir, { withFileTypes: true });
+        for (const item of items) {
+          if (entries.length >= entryLimit) break;
+          if (item.name === ".git" || item.name === "node_modules" || item.name === ".next") continue;
+
+          const rel = relativeDir ? `${relativeDir}/${item.name}` : item.name;
+          if (item.isDirectory()) {
+            entries.push(`${rel}/`);
+            await walk(path.join(currentDir, item.name), rel, depth + 1);
+          } else {
+            entries.push(rel);
+          }
+        }
+      }
+
+      await walk(repoDir, "", 1);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              repository: `${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}`,
+              baseBranch: base,
+              maxDepth: depthLimit,
+              totalEntries: entries.length,
+              entries,
+            }),
+          },
+        ],
+      };
+    }
+
+    if (name === "read_repository_file") {
+      const { filePath, baseBranch, maxChars } = z
+        .object({
+          filePath: z.string().min(1),
+          baseBranch: z.string().optional(),
+          maxChars: z.number().int().min(500).max(200000).optional(),
+        })
+        .parse(args);
+
+      const base = baseBranch ?? ghEnv.GITHUB_BASE_BRANCH;
+      const repoDir = await ensureMainClone(base);
+      const normalized = path.normalize(filePath).replace(/^([.][\/])+/, "");
+      const target = path.resolve(repoDir, normalized);
+
+      if (!target.startsWith(path.resolve(repoDir))) {
+        throw new Error("Invalid filePath: path traversal is not allowed");
+      }
+
+      const stat = await fs.stat(target).catch(() => null);
+      if (!stat || !stat.isFile()) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+
+      const limit = maxChars ?? 12_000;
+      const raw = await fs.readFile(target, "utf-8");
+      const truncated = raw.length > limit;
+      const content = truncated ? `${raw.slice(0, limit)}\n\n...[truncated]` : raw;
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              filePath: normalized.replace(/\\/g, "/"),
+              baseBranch: base,
+              truncated,
+              content,
+            }),
           },
         ],
       };

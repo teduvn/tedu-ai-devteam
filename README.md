@@ -8,13 +8,14 @@ An AI-powered development team that automates the Software Development Life Cycl
 Jira Ticket
     │
     ▼
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌──────────────────┐
-│  BA Agent   │───▶  │  PM Agent   │───▶  │ Coder Agent │───▶  │  DevOps Agent    │
-│             │      │             │      │             │      │  (staging deploy) │
-│ - Quét To Do│      │ - Đọc Jira  │      │ - Viết code │      │ - Tạo branch     │
-│ - Viết story│      │ - Lập kế    │      │ - Review    │      │ - Commit & PR    │
-│ - Ready Dev │      │   hoạch     │      │   code      │      │ - Deploy staging │
-└─────────────┘      └─────────────┘      └─────────────┘      └──────────────────┘
+┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌─────────────┐      ┌──────────────────┐
+│  BA Agent   │───▶  │  SA Agent   │───▶  │  PM Agent   │───▶  │ Coder Agent │───▶  │  DevOps Agent    │
+│             │      │             │      │             │      │             │      │  (staging deploy) │
+│ - Quét To Do│      │ - Lọc Ready │      │ - Đọc Jira  │      │ - Viết code │      │ - Tạo branch     │
+│ - Viết story│      │   for Dev   │      │ - Lập kế    │      │ - Review    │      │ - Commit & PR    │
+│ - Ready Dev │      │ - Enrich    │      │   hoạch     │      │   code      │      │ - Deploy staging │
+│             │      │   Tech Design│     │             │      │             │      │                  │
+└─────────────┘      └─────────────┘      └─────────────┘      └─────────────┘      └──────────────────┘
                                                     │
                         ┌───────────────────────────┘
                         ▼
@@ -50,6 +51,10 @@ Jira Ticket
 | Thành phần | Công nghệ | Mô tả |
 |---|---|---|
 | **BA Agent** | LangGraph Node + Jira MCP | Quét ticket `To Do`, sinh User Story tiếng Việt, cập nhật description và chuyển `Ready for Dev` |
+| **SA Agent** | LangGraph Node + Jira MCP + GitHub MCP | Quét ticket `Ready for Dev` chưa assign, đọc structure/source code, bổ sung phần Technical Design Solution và comment xác nhận |
+| **PM Agent** | LangGraph Node + Jira MCP | Phân tích ticket đã được BA/SA enrich, tạo development plan chi tiết và chuyển ticket `In Progress` |
+| **Coder Agent** | LangGraph Node + Filesystem MCP | Implement theo plan + technical design, chỉnh sửa mã nguồn và tạo code changes |
+| **DevOps Agent** | LangGraph Node + GitHub/Jira MCP | Tạo branch/PR, deploy staging, merge production sau human approval |
 | **Orchestration** | LangGraph.js | Điều phối luồng giữa các agent |
 | **LLM** | Claude Sonnet / OpenAI (configurable) | Não xử lý của từng agent |
 | **MCP Servers** | Model Context Protocol | "Tay" của agent — gọi Jira, GitHub, Filesystem |
@@ -182,6 +187,8 @@ pnpm build
 2. Nhập **Jira Ticket ID** (ví dụ: `TEDU-42`) vào ô input
 3. Nhấn **Run Agent**
 4. Theo dõi trạng thái realtime:
+   - 🧾 **Business Context** — User Story do BA Agent enrich từ title + description draft
+   - 🏗 **Technical Design** — giải pháp kỹ thuật do SA Agent bổ sung trước khi dev implement
    - 📋 **Development Plan** — kế hoạch từ PM Agent
    - 💻 **Code Changes** — danh sách file được thay đổi
    - ✅/❌ **Test Results** — kết quả từ Tester Agent (coverage, failed tests, staging URL)

@@ -15,3 +15,7 @@ export { addTokens, getTokens, clearTokens } from "./tools/token-tracker.js";
 // ─── BA Agent ─────────────────────────────────────────────────────────────────
 export { baGraph, BAAgentState } from "./ba-graph.js";
 export type { BAAgentStateType, BAProcessedTicket } from "./ba-graph.js";
+
+// ─── SA Agent ─────────────────────────────────────────────────────────────────
+export { saGraph, SAAgentState } from "./sa-graph.js";
+export type { SAAgentStateType, SAProcessedTicket } from "./sa-graph.js";

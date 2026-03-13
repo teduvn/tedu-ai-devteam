@@ -1,6 +1,7 @@
 import { resolve } from "path";
 import { graph } from "./graph.js";
 import { baGraph } from "./ba-graph.js";
+import { saGraph } from "./sa-graph.js";
 import { env, MONOREPO_ROOT } from "./env.js";
 import { createMCPTools, closeMCPClient } from "./tools/mcp-client.js";
 import { writeAgentStatus, clearAgentStatus } from "./status-store.js";
@@ -212,6 +213,35 @@ async function runBAScan(): Promise<void> {
   }
 }
 
+// ─── SA Agent: enrich unassigned Ready-for-Dev tickets with technical design ─
+
+async function runSAScan(): Promise<void> {
+  console.log(`\n  [${new Date().toLocaleTimeString()}]  🧠 SA Agent scanning unassigned Ready-for-Dev tickets…`);
+  const threadId = `sa-thread-${Date.now()}`;
+  try {
+    for await (const event of await saGraph.stream(
+      {},
+      { configurable: { thread_id: threadId }, streamMode: "updates" },
+    )) {
+      for (const [, nodeState] of Object.entries(event)) {
+        const s = nodeState as {
+          totalScanned?: number;
+          processedTickets?: Array<{ id: string; status: string }>;
+        };
+        if (s.totalScanned !== undefined) {
+          const ok = (s.processedTickets ?? []).filter((t) => t.status === "success").length;
+          const skipped = (s.processedTickets ?? []).filter((t) => t.status === "skipped").length;
+          console.log(
+            `  ✅ SA scan complete — ${s.totalScanned} scanned, ${ok} updated technical design, ${skipped} skipped.`,
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("  ⚠️  SA scan failed (non-fatal):", err instanceof Error ? err.message : err);
+  }
+}
+
 // ─── Entrypoint ───────────────────────────────────────────────────────────────
 
 console.log("");
@@ -226,6 +256,15 @@ const cliArgs = process.argv.slice(2);
 const flagIdx = cliArgs.findIndex((a) => a === "--ticket" || a === "-t");
 const manualTicketId =
   flagIdx !== -1 ? cliArgs[flagIdx + 1] : cliArgs.find((a) => !a.startsWith("-"));
+const saOnlyMode = cliArgs.includes("--sa-only") || cliArgs.includes("--sa");
+
+if (saOnlyMode) {
+  // ── SA-only mode: run only Solution Architecture scan once and exit ──────
+  console.log("\n  ℹ️  SA-only mode — scanning unassigned \"Ready for Dev\" tickets once.\n");
+  await runSAScan();
+  console.log("\n  ✅ SA-only mode completed.\n");
+  process.exit(0);
+}
 
 if (manualTicketId) {
   // ── Ad-hoc mode: one specific ticket ──────────────────────────────────────
@@ -234,11 +273,16 @@ if (manualTicketId) {
 } else {
   // ── Auto mode: poll Jira until tickets appear, then process ───────────────
   console.log("\n  🔄 Auto mode: polling Jira every 30s for \"Ready for Dev\" tickets…\n");
+  const MAX_NO_UNASSIGNED_POLLS = 3;
+  let noUnassignedReadyForDevPolls = 0;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // ── Step 1: BA scan — enrich TODO tickets and move them to Ready for Dev ──
     await runBAScan();
+
+    // ── Step 2: SA scan — enrich unassigned Ready-for-Dev tickets with design ──
+    await runSAScan();
 
     let tickets: ReadyTicket[];
     try {
@@ -251,7 +295,17 @@ if (manualTicketId) {
     }
 
     if (tickets.length === 0) {
-      console.log(`  [${new Date().toLocaleTimeString()}]  ✋ No tickets in "Ready for Dev". Checking again in 30s…`);
+      noUnassignedReadyForDevPolls += 1;
+      if (noUnassignedReadyForDevPolls >= MAX_NO_UNASSIGNED_POLLS) {
+        console.log(
+          `  📴 No "Ready for Dev" unassigned tickets for ${noUnassignedReadyForDevPolls} consecutive checks. Auto-stopping agent.`,
+        );
+        break;
+      }
+
+      console.log(
+        `  [${new Date().toLocaleTimeString()}]  ✋ No tickets in "Ready for Dev" (check ${noUnassignedReadyForDevPolls}/${MAX_NO_UNASSIGNED_POLLS}). Checking again in 30s…`,
+      );
       await sleep(30_000);
       continue;
     }
@@ -260,6 +314,18 @@ if (manualTicketId) {
     // in "Ready for Dev" until a developer picks them up.
     const unassigned = tickets.filter((t) => !t.assignee);
     const assigned   = tickets.filter((t) => !!t.assignee);
+
+    if (unassigned.length === 0) {
+      noUnassignedReadyForDevPolls += 1;
+      if (noUnassignedReadyForDevPolls >= MAX_NO_UNASSIGNED_POLLS) {
+        console.log(
+          `  📴 No "Ready for Dev" unassigned tickets for ${noUnassignedReadyForDevPolls} consecutive checks. Auto-stopping agent.`,
+        );
+        break;
+      }
+    } else {
+      noUnassignedReadyForDevPolls = 0;
+    }
 
     if (unassigned.length > 0) {
       console.log(`  ⏭  Skipping ${unassigned.length} unassigned ticket(s) — assign a developer first:`);

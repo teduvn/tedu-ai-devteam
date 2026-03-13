@@ -9,12 +9,12 @@ import type { AgentStateType } from "../state.js";
 
 // ─── System Prompt ────────────────────────────────────────────────────────────
 // Embeds the full "Create User Story" skill template so the LLM can generate
-// well-structured Jira stories from just a ticket title/summary.
+// well-structured Jira stories from ticket title and any existing description draft.
 
 const SYSTEM_PROMPT = `Bạn là một Business Analyst cấp cao (BA Agent) trong đội phát triển phần mềm được hỗ trợ bởi AI.
 
 ## Nhiệm vụ của bạn
-Quét tất cả Jira ticket có trạng thái "To Do", tạo User Story hoàn chỉnh cho từng ticket chỉ dựa trên tiêu đề của nó, cập nhật mô tả Jira, sau đó chuyển ticket sang trạng thái "Ready for Dev".
+Quét tất cả Jira ticket có trạng thái "To Do", tạo User Story hoàn chỉnh cho từng ticket dựa trên tiêu đề và phần mô tả hiện có (nếu có), cập nhật mô tả Jira, sau đó chuyển ticket sang trạng thái "Ready for Dev".
 
 ## Hướng dẫn Viết User Story
 
@@ -79,8 +79,8 @@ Tôi muốn [thực hiện một hành động nào đó],
 
 1. Gọi \`list_todo_tickets\` để lấy tất cả ticket TODO.
 2. Với MỖI ticket trong kết quả:
-   a. Gọi \`get_ticket_details\` để lấy tóm tắt ticket.
-   b. Tạo User Story hoàn chỉnh theo mẫu trên, suy luận ngữ cảnh từ tiêu đề ticket.
+  a. Gọi \`get_ticket_details\` để lấy tiêu đề và mô tả ticket hiện tại.
+  b. Nếu ticket đã có draft trong description (do CEO/PO ghi chú), hãy giữ lại ý chính và enrich thành User Story hoàn chỉnh theo mẫu trên; nếu description trống hoặc quá ít thông tin thì mới suy luận thêm từ tiêu đề.
    c. Gọi \`update_ticket_description\` với nội dung user story markdown đã tạo.
    d. Gọi \`update_ticket_status\` với statusName = "Ready for Dev" để chuyển trạng thái ticket.
 3. Sau khi xử lý TẤT CẢ ticket, chỉ phản hồi với một khối JSON:
@@ -103,7 +103,7 @@ Tôi muốn [thực hiện một hành động nào đó],
 Quy tắc:
 - Xử lý mọi ticket TODO — không được bỏ qua bất kỳ ticket nào.
 - Nếu một ticket thất bại, ghi lại với "status": "error" và thông báo "error", sau đó tiếp tục xử lý các ticket khác.
-- User story phải cụ thể và gắn liền với ngữ cảnh tiêu đề ticket.
+- User story phải cụ thể, bám sát tiêu đề ticket và ưu tiên khai thác nội dung draft trong description nếu có.
 - KHÔNG đưa ra giả định về công nghệ trong nội dung câu chuyện.
 - Toàn bộ nội dung User Story phải được viết bằng tiếng Việt.`;
 
@@ -133,7 +133,7 @@ export async function baNode(
     const messages = [
       new SystemMessage(SYSTEM_PROMPT),
       new HumanMessage(
-        "Bắt đầu quy trình BA: quét tất cả ticket TODO, tạo user story từ tiêu đề của chúng, " +
+        "Bắt đầu quy trình BA: quét tất cả ticket TODO, tạo user story từ tiêu đề và description hiện có, " +
           "cập nhật mô tả từng ticket bằng tiếng Việt, và chuyển chúng sang trạng thái 'Ready for Dev'.",
       ),
     ];
@@ -193,14 +193,14 @@ export async function baNode(
 
 // ─── Single-ticket BA Node (used inside the main SDLC graph) ─────────────────
 //
-// Fetches the specific ticket's title, generates a full User Story, and
+// Fetches the specific ticket's title/description, generates a full User Story, and
 // updates the Jira description — WITHOUT moving the status (PM agent does that).
 
 const SINGLE_TICKET_PROMPT = `Bạn là một Business Analyst cấp cao (BA Agent) trong đội phát triển phần mềm được hỗ trợ bởi AI.
 
 Nhiệm vụ của bạn cho MỘT Jira ticket cụ thể:
-1. Gọi \`get_ticket_details\` để lấy tóm tắt/tiêu đề ticket.
-2. Tạo User Story hoàn chỉnh theo mẫu dưới đây, suy luận toàn bộ ngữ cảnh từ tiêu đề.
+1. Gọi \`get_ticket_details\` để lấy tiêu đề và mô tả hiện tại của ticket.
+2. Nếu description đã có draft/ghi chú từ CEO hoặc PO, dùng đó làm nguồn chính và enrich thành User Story hoàn chỉnh theo mẫu dưới đây; nếu description thiếu dữ liệu thì suy luận bổ sung từ tiêu đề.
 3. Gọi \`update_ticket_description\` với nội dung markdown đã tạo.
 4. KHÔNG thay đổi trạng thái ticket — agent khác sẽ xử lý phần đó.
 
@@ -296,7 +296,7 @@ export async function baSingleNode(
       new SystemMessage(SINGLE_TICKET_PROMPT),
       new HumanMessage(
         `Jira ticket: "${state.ticketId}". ` +
-          `Lấy tiêu đề ticket, tạo user story hoàn chỉnh bằng tiếng Việt, và cập nhật mô tả Jira.`,
+          `Lấy tiêu đề + description hiện có, enrich thành user story hoàn chỉnh bằng tiếng Việt, rồi cập nhật mô tả Jira.`,
       ),
     ];
 
