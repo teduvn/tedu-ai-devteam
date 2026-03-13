@@ -13,7 +13,11 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
-const PROJECT_ROOT = process.cwd();
+// TARGET_REPO_DIR is set by the agent node when it launches this server,
+// pointing to the locally-cloned target repository directory.
+const PROJECT_ROOT = process.env["TARGET_REPO_DIR"]
+  ? path.resolve(process.env["TARGET_REPO_DIR"])
+  : process.cwd();
 
 // ─── Security: path traversal guard ──────────────────────────────────────────
 

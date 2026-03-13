@@ -15,6 +15,11 @@ Workflow:
 2. Use \`check_endpoints\` to smoke-test any HTTP endpoints affected by this ticket.
 3. Use \`read_file\` to examine specific source files if you need to understand logic.
 4. Analyse the test output and decide PASS or FAIL.
+5. Update Jira status and add a comment BEFORE responding with the JSON result:
+   - If PASS: call update_ticket_status → "Ready for Release", then add_comment:
+     "✅ QA passed. Summary: {summary}. Coverage: {X}%. Affected files clean."
+   - If FAIL: call update_ticket_status → "In Progress" (returns ticket to coder), then add_comment:
+     "❌ QA failed. Issues:\n{failed tests, one per line}"
 
 Respond ONLY with a JSON block:
 \`\`\`json
@@ -30,7 +35,7 @@ Respond ONLY with a JSON block:
 Rules:
 - If ANY critical test fails → passed = false
 - Include clear, actionable failure messages so the Coder Agent can self-correct
-- An empty faliedTests array is expected when passed = true`;
+- An empty failedTests array is expected when passed = true`;
 
 export async function testerNode(
   state: AgentStateType,
@@ -51,7 +56,7 @@ export async function testerNode(
   });
 
   try {
-    const llm = createLLM();
+    const llm = createLLM(state.ticketId);
 
     const allTools = [...fsTools, ...jiraTools];
 

@@ -1,6 +1,6 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import { resolve } from "path";
-import { MONOREPO_ROOT } from "../env.js";
+import { env, MONOREPO_ROOT } from "../env.js";
 import { createMCPTools, closeMCPClient } from "../tools/mcp-client.js";
 import { invokeWithTools, extractJson } from "../tools/invoke-with-tools.js";
 import { createLLM } from "../tools/llm-factory.js";
@@ -34,10 +34,14 @@ export async function coderNode(
   const { tools, client } = await createMCPTools({
     command: "npx",
     args: ["tsx", resolve(MONOREPO_ROOT, "packages/mcp-servers/src/filesystem-server.ts")],
+    env: {
+      // Point the filesystem server at the locally-cloned target repo
+      TARGET_REPO_DIR: resolve(env.WORKSPACE_DIR, env.GITHUB_REPO),
+    },
   });
 
   try {
-    const llm = createLLM();
+    const llm = createLLM(state.ticketId);
 
     const planText = state.plan
       .map((task, i) => `${i + 1}. ${task}`)

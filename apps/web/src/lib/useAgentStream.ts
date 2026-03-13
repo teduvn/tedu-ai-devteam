@@ -114,8 +114,8 @@ export function useAgentStream(
           setAgentStreamState((previousState) => ({
             ...previousState,
             phase: nodeUpdate.phase ?? previousState.phase,
-            plan: nodeUpdate.plan ?? previousState.plan,
-            codeChanges: nodeUpdate.codeChanges ?? previousState.codeChanges,
+            plan: nodeUpdate.plan ? [...nodeUpdate.plan] : previousState.plan,
+            codeChanges: nodeUpdate.codeChanges ? [...nodeUpdate.codeChanges] : previousState.codeChanges,
             prUrl: nodeUpdate.prUrl ?? previousState.prUrl,
             branchName: nodeUpdate.branchName ?? previousState.branchName,
             stagingUrl: nodeUpdate.stagingUrl !== undefined ? nodeUpdate.stagingUrl : previousState.stagingUrl,

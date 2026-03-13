@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import StatusBadge from "./StatusBadge";
 import LogStream from "./LogStream";
 import TicketDetails from "./TicketDetails";
@@ -13,6 +13,7 @@ import { getMockTicket, updateTicketStatus } from "@/lib/mockTicketService";
 import { getMockDiffForFile, getMockDiffsForChanges } from "@/lib/mockDiffService";
 import { sampleFileStructure } from "@/lib/sampleData";
 import type { FileOperation } from "@/types/agent-workflow";
+import type { AgentStatus } from "@tedu/agents";
 
 type ViewMode = "diff" | "code";
 
@@ -27,6 +28,33 @@ export default function AgentDashboard() {
   const [ticketDetails, setTicketDetails] = useState<ReturnType<typeof getMockTicket> | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("diff");
+
+  // ── CLI status polling ───────────────────────────────────────────────────
+  const [cliStatus, setCliStatus] = useState<AgentStatus | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const res = await fetch("/api/agent/status");
+        if (!res.ok) return;
+        const data = (await res.json()) as Partial<AgentStatus>;
+        if (data.phase && data.phase !== "idle") {
+          setCliStatus(data as AgentStatus);
+        } else {
+          setCliStatus(null);
+        }
+      } catch {
+        // Network error — keep current state
+      }
+    };
+
+    poll();
+    pollIntervalRef.current = setInterval(poll, 3000);
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
 
   const {
     phase,
@@ -202,6 +230,48 @@ as part of implementing ticket requirements.
 
   return (
     <div className="space-y-6">
+      {/* ── CLI Status Banner ── */}
+      {cliStatus && !isRunning && (
+        <div className="flex items-start gap-3 bg-blue-950 border border-blue-700 rounded-lg p-4">
+          <span className="text-blue-400 text-lg mt-0.5">🖥</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-blue-300">
+                CLI Agent Running
+              </span>
+              <span className="text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded font-mono">
+                {cliStatus.ticketId}
+              </span>
+              <StatusBadge phase={cliStatus.phase} />
+              {cliStatus.branchName && (
+                <span className="text-xs bg-gray-800 text-gray-300 px-2 py-0.5 rounded font-mono">
+                  {cliStatus.branchName}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-blue-400 mt-1">
+              Started {new Date(cliStatus.startedAt).toLocaleTimeString()} &bull;
+              Thread&nbsp;
+              <span className="font-mono">{cliStatus.threadId}</span>
+            </p>
+            {cliStatus.interrupted && (
+              <p className="text-xs text-orange-300 mt-1 font-semibold">
+                ⏸ Paused — awaiting human review in this dashboard.
+              </p>
+            )}
+            {cliStatus.error && (
+              <p className="text-xs text-red-300 mt-1 font-mono">
+                Error: {cliStatus.error}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></span>
+            <span className="text-xs text-blue-400">live</span>
+          </div>
+        </div>
+      )}
+
       {/* ── Input Form ── */}
       <form
         onSubmit={handleSubmit}

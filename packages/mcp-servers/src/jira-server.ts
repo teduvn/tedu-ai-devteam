@@ -68,6 +68,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ["ticketId", "comment"],
       },
     },
+    {
+      name: "list_ready_for_dev_tickets",
+      description:
+        "Search for tickets in the project whose status is 'Ready for Dev', ordered by priority descending.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          maxResults: {
+            type: "number",
+            description: "Maximum number of tickets to return (default 10)",
+          },
+        },
+        required: [],
+      },
+    },
   ],
 }));
 
@@ -191,6 +206,54 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         content: [
           { type: "text" as const, text: `Comment added to ${ticketId}` },
+        ],
+      };
+    }
+
+    if (name === "list_ready_for_dev_tickets") {
+      const { maxResults } = z
+        .object({ maxResults: z.number().optional() })
+        .parse(args ?? {});
+
+      const jql = encodeURIComponent(
+        `project = "${jiraEnv.JIRA_PROJECT_KEY}" AND status = "Ready for Dev" ORDER BY priority DESC`,
+      );
+      const resp = await fetch(
+        `${jiraEnv.JIRA_BASE_URL}/rest/api/3/search?jql=${jql}&maxResults=${maxResults ?? 10}&fields=summary,priority,status,assignee,issuetype`,
+        { headers: HEADERS },
+      );
+      if (!resp.ok)
+        throw new Error(`Jira search ${resp.status}: ${await resp.text()}`);
+
+      const data = (await resp.json()) as {
+        total: number;
+        issues: Array<{
+          key: string;
+          fields: {
+            summary: string;
+            priority?: { name: string };
+            status?: { name: string };
+            assignee?: { displayName: string };
+            issuetype?: { name: string };
+          };
+        }>;
+      };
+
+      const tickets = data.issues.map((issue) => ({
+        id: issue.key,
+        summary: issue.fields.summary,
+        priority: (issue.fields.priority?.name ?? "medium").toLowerCase(),
+        type: (issue.fields.issuetype?.name ?? "task").toLowerCase(),
+        assignee: issue.fields.assignee?.displayName ?? null,
+        status: issue.fields.status?.name ?? "Ready for Dev",
+      }));
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ total: data.total, tickets }),
+          },
         ],
       };
     }

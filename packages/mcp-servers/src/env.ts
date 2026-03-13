@@ -18,6 +18,7 @@ export function getGithubEnv() {
       GITHUB_OWNER: z.string().min(1),
       GITHUB_REPO: z.string().min(1),
       GITHUB_BASE_BRANCH: z.string().default("main"),
+      WORKSPACE_DIR: z.string().min(1, "WORKSPACE_DIR is required — local directory where repos are cloned"),
     })
     .parse(process.env);
 }

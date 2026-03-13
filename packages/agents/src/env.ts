@@ -36,12 +36,17 @@ const envSchema = z.object({
   JIRA_BASE_URL: z.string().url("JIRA_BASE_URL must be a valid URL"),
   JIRA_EMAIL: z.string().email("JIRA_EMAIL must be a valid email"),
   JIRA_API_TOKEN: z.string().min(1, "JIRA_API_TOKEN is required"),
+  JIRA_PROJECT_KEY: z.string().default("TEDU"),
 
   // ─── GitHub ──────────────────────────────────────────────────────────────
   GITHUB_TOKEN: z.string().min(1, "GITHUB_TOKEN is required"),
   GITHUB_OWNER: z.string().min(1, "GITHUB_OWNER is required"),
   GITHUB_REPO: z.string().min(1, "GITHUB_REPO is required"),
   GITHUB_BASE_BRANCH: z.string().default("main"),
+  // Local directory where target repos are cloned (e.g. /tmp/tedu-workspace)
+  WORKSPACE_DIR: z.string().min(1, "WORKSPACE_DIR is required"),
+  // Number of parallel agent workers (default 3)
+  N_WORKERS: z.coerce.number().int().min(1).default(3),
 });
 
 export const env = envSchema.parse(process.env);

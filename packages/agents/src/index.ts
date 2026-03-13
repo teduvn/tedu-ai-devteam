@@ -8,3 +8,6 @@ export type {
   TestResult,
   AgentPhase,
 } from "./state.js";
+export { readAgentStatus, writeAgentStatus, clearAgentStatus, readAllAgentStatuses } from "./status-store.js";
+export type { AgentStatus } from "./status-store.js";
+export { addTokens, getTokens, clearTokens } from "./tools/token-tracker.js";

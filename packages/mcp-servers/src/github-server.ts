@@ -1,3 +1,7 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -15,6 +19,66 @@ const server = new Server(
 );
 
 const GH_API = "https://api.github.com";
+
+// ─── Git CLI helper ────────────────────────────────────────────────────────────────
+
+const execFileAsync = promisify(execFile);
+
+async function execGit(args: string[], cwd?: string): Promise<string> {
+  const { stdout } = await execFileAsync("git", args, { cwd });
+  return stdout.trim();
+}
+
+// ─── Worktree helpers ─────────────────────────────────────────────────────────
+
+/** Maps a branch name to an isolated worktree directory. */
+function resolveWorktreeDir(branchName: string): string {
+  const sanitized = branchName.replace(/[/\\:*?"<>|]/g, "-");
+  return path.join(ghEnv.WORKSPACE_DIR, "worktrees", sanitized);
+}
+
+/**
+ * Ensures the main bare clone exists at {WORKSPACE_DIR}/{GITHUB_REPO}.
+ * Race-safe: a `.cloning` sentinel file prevents two parallel agents from
+ * both attempting the initial clone simultaneously.
+ */
+async function ensureMainClone(base: string): Promise<string> {
+  const repoDir = path.join(ghEnv.WORKSPACE_DIR, ghEnv.GITHUB_REPO);
+  const repoUrl = `https://x-access-token:${ghEnv.GITHUB_TOKEN}@github.com/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}.git`;
+  const sentinelPath = path.join(ghEnv.WORKSPACE_DIR, ".cloning");
+
+  const isCloned = await fs.access(path.join(repoDir, ".git")).then(() => true).catch(() => false);
+  if (isCloned) {
+    // Fetch latest remote state (git fetch is safe to run concurrently)
+    await execGit(["fetch", "origin", base], repoDir);
+    return repoDir;
+  }
+
+  // Wait if another parallel process is currently cloning (up to 30 s)
+  for (let i = 0; i < 15; i++) {
+    const cloning = await fs.access(sentinelPath).then(() => true).catch(() => false);
+    if (!cloning) break;
+    await new Promise<void>((r) => setTimeout(r, 2000));
+  }
+
+  // Re-check after waiting
+  const nowCloned = await fs.access(path.join(repoDir, ".git")).then(() => true).catch(() => false);
+  if (nowCloned) {
+    await execGit(["fetch", "origin", base], repoDir);
+    return repoDir;
+  }
+
+  // We are the first — perform the clone
+  await fs.mkdir(ghEnv.WORKSPACE_DIR, { recursive: true });
+  await fs.writeFile(sentinelPath, Date.now().toString(), "utf-8");
+  try {
+    await execGit(["clone", "--branch", base, repoUrl, repoDir]);
+  } finally {
+    await fs.unlink(sentinelPath).catch(() => {});
+  }
+  return repoDir;
+}
+
 const HEADERS = {
   Authorization: `Bearer ${ghEnv.GITHUB_TOKEN}`,
   "Content-Type": "application/json",
@@ -166,31 +230,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         .parse(args);
 
       const base = baseBranch ?? ghEnv.GITHUB_BASE_BRANCH;
-      const refResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/ref/heads/${base}`,
-        { headers: HEADERS },
-      );
-      if (!refResp.ok) throw new Error(`Base branch "${base}" not found`);
-      const ref = (await refResp.json()) as { object: { sha: string } };
+      const repoDir = await ensureMainClone(base);
+      const wtDir = resolveWorktreeDir(branchName);
 
-      const createResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/refs`,
-        {
-          method: "POST",
-          headers: HEADERS,
-          body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: ref.object.sha }),
-        },
-      );
-      if (!createResp.ok) {
-        const err = (await createResp.json()) as { message: string };
-        throw new Error(err.message);
+      // Remove stale worktree from a previous run (safe on retries)
+      const staleWt = await fs.access(wtDir).then(() => true).catch(() => false);
+      if (staleWt) {
+        await execGit(["worktree", "remove", "--force", wtDir], repoDir).catch(() => {});
+        await fs.rm(wtDir, { recursive: true, force: true }).catch(() => {});
       }
+
+      // Create an isolated working tree for this branch
+      // -B creates the branch if it doesn't exist, or resets it if it does
+      await execGit(["worktree", "add", "-B", branchName, wtDir, `origin/${base}`], repoDir);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ branchName, sha: ref.object.sha }),
+            text: JSON.stringify({ branchName, worktreeDir: wtDir }),
           },
         ],
       };
@@ -205,76 +263,32 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         })
         .parse(args);
 
-      const refResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/ref/heads/${branchName}`,
-        { headers: HEADERS },
-      );
-      const ref = (await refResp.json()) as { object: { sha: string } };
+      // Use this branch's isolated worktree; fall back to main clone if worktree
+      // was never created (e.g. branch already existed before this agent run).
+      const wtDir = resolveWorktreeDir(branchName);
+      const repoDir = path.join(ghEnv.WORKSPACE_DIR, ghEnv.GITHUB_REPO);
+      const targetDir = await fs.access(wtDir).then(() => wtDir).catch(() => repoDir);
 
-      const commitResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/commits/${ref.object.sha}`,
-        { headers: HEADERS },
-      );
-      const commit = (await commitResp.json()) as { tree: { sha: string } };
+      // Write files to the isolated working tree
+      for (const file of files) {
+        const target = path.join(targetDir, file.path);
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(target, file.content, "utf-8");
+      }
 
-      // Create blobs
-      const blobs = await Promise.all(
-        files.map(async (file) => {
-          const blobResp = await fetch(
-            `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/blobs`,
-            {
-              method: "POST",
-              headers: HEADERS,
-              body: JSON.stringify({ content: file.content, encoding: "utf-8" }),
-            },
-          );
-          const blob = (await blobResp.json()) as { sha: string };
-          return {
-            path: file.path,
-            mode: "100644" as const,
-            type: "blob" as const,
-            sha: blob.sha,
-          };
-        }),
+      // Stage all changes, commit, and push
+      await execGit(["add", "-A"], targetDir);
+      await execGit(
+        ["-c", "user.name=TEDU Agent", "-c", "user.email=agent@tedu.dev", "commit", "-m", message],
+        targetDir,
       );
-
-      // Create tree
-      const treeResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/trees`,
-        {
-          method: "POST",
-          headers: HEADERS,
-          body: JSON.stringify({ base_tree: commit.tree.sha, tree: blobs }),
-        },
-      );
-      const tree = (await treeResp.json()) as { sha: string };
-
-      // Create commit
-      const newCommitResp = await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/commits`,
-        {
-          method: "POST",
-          headers: HEADERS,
-          body: JSON.stringify({ message, tree: tree.sha, parents: [ref.object.sha] }),
-        },
-      );
-      const newCommit = (await newCommitResp.json()) as { sha: string };
-
-      // Update ref
-      await fetch(
-        `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/git/refs/heads/${branchName}`,
-        {
-          method: "PATCH",
-          headers: HEADERS,
-          body: JSON.stringify({ sha: newCommit.sha }),
-        },
-      );
+      await execGit(["push", "origin", branchName], targetDir);
 
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ commitSha: newCommit.sha, filesCommitted: files.length }),
+            text: JSON.stringify({ filesCommitted: files.length, branchName }),
           },
         ],
       };
@@ -358,6 +372,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         })
         .parse(args);
 
+      // Fetch PR info first so we can clean up the worktree after merge
+      let headBranch: string | null = null;
+      try {
+        const prInfoResp = await fetch(
+          `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/pulls/${prNumber}`,
+          { headers: HEADERS },
+        );
+        if (prInfoResp.ok) {
+          const prInfo = (await prInfoResp.json()) as { head: { ref: string } };
+          headBranch = prInfo.head.ref;
+        }
+      } catch { /* best-effort */ }
+
       const resp = await fetch(
         `${GH_API}/repos/${ghEnv.GITHUB_OWNER}/${ghEnv.GITHUB_REPO}/pulls/${prNumber}/merge`,
         {
@@ -374,6 +401,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         throw new Error(err.message);
       }
       const result = (await resp.json()) as { sha: string; merged: boolean; message: string };
+
+      // Clean up isolated worktree (best-effort — don't fail the merge if this errors)
+      if (headBranch) {
+        try {
+          const repoDir = path.join(ghEnv.WORKSPACE_DIR, ghEnv.GITHUB_REPO);
+          const wtDir = resolveWorktreeDir(headBranch);
+          const wtExists = await fs.access(wtDir).then(() => true).catch(() => false);
+          if (wtExists) {
+            await execGit(["worktree", "remove", "--force", wtDir], repoDir).catch(() => {});
+            await fs.rm(wtDir, { recursive: true, force: true }).catch(() => {});
+          }
+        } catch { /* best-effort */ }
+      }
+
       return {
         content: [
           {

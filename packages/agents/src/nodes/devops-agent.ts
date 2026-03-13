@@ -17,6 +17,7 @@ Your workflow for this phase:
 2. commit_files — commit all changed files with a conventional commit message
 3. create_pull_request — write a detailed PR body; mark it as draft=true for now
 4. deploy_to_staging — trigger a staging deployment of the branch so the Tester can verify
+5. update_ticket_status — set the Jira ticket to "Ready for Testing"
 
 After completing all steps respond ONLY with:
 \`\`\`json
@@ -39,7 +40,13 @@ The Tester has verified the code and a human has approved the release.
 Your workflow:
 1. merge_pull_request — merge the approved PR into the base branch
 2. update_ticket_status — set the Jira ticket status to "Done"
-3. add_comment — post a release comment with the PR URL and branch name
+3. add_comment — post this exact release summary as a Jira comment (fill in real values):
+
+🤖 TEDU AI Agent — Release Summary
+Branch: {branchName}
+PR: {prUrl} (#{prNumber})
+Tests: ✅ passed
+Merged: {ISO timestamp}
 
 Respond ONLY with:
 \`\`\`json
@@ -61,6 +68,7 @@ export async function devopsNode(
       GITHUB_OWNER: env.GITHUB_OWNER,
       GITHUB_REPO: env.GITHUB_REPO,
       GITHUB_BASE_BRANCH: env.GITHUB_BASE_BRANCH,
+      WORKSPACE_DIR: env.WORKSPACE_DIR,
     },
   });
 
@@ -75,7 +83,7 @@ export async function devopsNode(
   });
 
   try {
-    const llm = createLLM();
+    const llm = createLLM(state.ticketId);
 
     const allTools = [...ghTools, ...jiraTools];
 

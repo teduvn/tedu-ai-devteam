@@ -46,7 +46,7 @@ export async function pmNode(
   });
 
   try {
-    const llm = createLLM();
+    const llm = createLLM(state.ticketId);
 
     const messages = [
       new SystemMessage(SYSTEM_PROMPT),

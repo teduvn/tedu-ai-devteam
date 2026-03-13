@@ -1,6 +1,9 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
+import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
+import type { LLMResult } from "@langchain/core/outputs";
 import { env } from "../env.js";
+import { addTokens } from "./token-tracker.js";
 
 export type SupportedLLM = ChatAnthropic | ChatOpenAI;
 
@@ -54,6 +57,40 @@ function deepseekAwareFetch(
 }
 
 /**
+ * Accumulates LLM token usage per ticket using the LangChain callback system.
+ * Works for both ChatAnthropic and ChatOpenAI (DeepSeek).
+ */
+class TokenTrackingCallback extends BaseCallbackHandler {
+  readonly name = "TokenTrackingCallback";
+
+  constructor(private readonly ticketId: string) {
+    super();
+  }
+
+  override handleChatModelEnd(output: LLMResult): void {
+    for (const genGroup of output.generations) {
+      for (const gen of genGroup) {
+        // `message` exists on ChatGeneration — grab usage_metadata (LangChain v0.2+)
+        const message = (gen as { message?: { usage_metadata?: { input_tokens?: number; output_tokens?: number } } }).message;
+        if (message?.usage_metadata) {
+          addTokens(
+            this.ticketId,
+            message.usage_metadata.input_tokens ?? 0,
+            message.usage_metadata.output_tokens ?? 0,
+          );
+          return;
+        }
+      }
+    }
+    // Fallback: OpenAI-style tokenUsage (DeepSeek)
+    const tu = (output.llmOutput as { tokenUsage?: { promptTokens?: number; completionTokens?: number } } | undefined)?.tokenUsage;
+    if (tu) {
+      addTokens(this.ticketId, tu.promptTokens ?? 0, tu.completionTokens ?? 0);
+    }
+  }
+}
+
+/**
  * Returns the configured LLM instance based on LLM_PROVIDER env var.
  * Supported providers:
  *   - "anthropic" (default) — Claude via Anthropic API
@@ -63,10 +100,13 @@ function deepseekAwareFetch(
  *   LLM_PROVIDER=deepseek
  *   LLM_MODEL=deepseek-chat        # V3 — recommended for tool use
  *   DEEPSEEK_API_KEY=sk-...
+ *
+ * Pass ticketId to enable per-ticket token usage tracking on the dashboard.
  */
-export function createLLM(): SupportedLLM {
+export function createLLM(ticketId?: string): SupportedLLM {
   const provider = env.LLM_PROVIDER;
   const model = env.LLM_MODEL ?? DEFAULT_MODELS[provider] ?? DEFAULT_MODELS["anthropic"];
+  const callbacks = ticketId ? [new TokenTrackingCallback(ticketId)] : undefined;
 
   if (provider === "deepseek") {
     if (!env.DEEPSEEK_API_KEY) {
@@ -82,6 +122,7 @@ export function createLLM(): SupportedLLM {
         // Inject missing reasoning_content fields before every API call.
         fetch: deepseekAwareFetch as typeof globalThis.fetch,
       },
+      callbacks,
     });
   }
 
@@ -94,7 +135,7 @@ export function createLLM(): SupportedLLM {
   return new ChatAnthropic({
     model,
     apiKey: env.ANTHROPIC_API_KEY,
+    callbacks,
   });
 }
-
 
